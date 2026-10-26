@@ -1,0 +1,8 @@
+// Settings shared by everyone who builds the app. Signing is personal, so it
+// lives in Local.xcconfig, which git ignores. Copy Local.xcconfig.example to
+// Local.xcconfig and fill in your team and a bundle prefix you own.
+
+BUNDLE_ID_PREFIX = com.example
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"

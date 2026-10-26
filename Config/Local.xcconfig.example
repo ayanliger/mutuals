@@ -1,0 +1,6 @@
+// Copy to Config/Local.xcconfig. Your team ID is in Xcode > Settings > Accounts,
+// or in the output of: defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier
+// A free personal team works; the app then has to be reinstalled every 7 days.
+
+DEVELOPMENT_TEAM = ABCDE12345
+BUNDLE_ID_PREFIX = com.yourname
