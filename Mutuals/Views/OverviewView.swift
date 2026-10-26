@@ -3,6 +3,8 @@ import SwiftUI
 
 struct OverviewView: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(QuietSettings.monthsKey) private var quietMonths = 12
+    @AppStorage(QuietSettings.mutualsKey) private var quietIncludesMutuals = false
     let report: Report
 
     /// Rows shown per section before "Show all".
@@ -40,6 +42,18 @@ struct OverviewView: View {
                 link("No personal signal", count: store.items(in: .noSignal).count, to: .list(.group(.noSignal)))
             } footer: {
                 Text("Mostly creators, brands and public figures. In any list, swipe left to mark an account as unfollowed or right to keep it.")
+            }
+
+            Section {
+                NavigationLink(value: Route.quiet) {
+                    if report.activity == nil {
+                        LabeledContent("Quiet accounts", value: "Needs activity")
+                    } else {
+                        LabeledContent("Quiet accounts", value: store.quietItems(months: quietMonths, includeMutuals: quietIncludesMutuals).count.formatted())
+                    }
+                }
+            } footer: {
+                Text("Accounts whose posts you haven't seen or interacted with in over \(QuietSettings.period(quietMonths)). Often pages that stopped posting.")
             }
 
             Section {

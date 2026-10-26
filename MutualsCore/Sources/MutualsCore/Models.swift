@@ -43,6 +43,9 @@ public struct Snapshot: Codable, Hashable, Identifiable, Sendable {
     public var isSample: Bool
     /// True when the lists came from the HTML export, which has no follow dates.
     public var fromHTML: Bool
+    /// Your activity toward the accounts you followed, when the export
+    /// included it. Optional so snapshots saved before it existed still load.
+    public var activity: ActivitySummary?
 
     public init(
         id: UUID = UUID(),
@@ -59,7 +62,8 @@ public struct Snapshot: Codable, Hashable, Identifiable, Sendable {
         receivedRequests: Set<String> = [],
         recentlyUnfollowed: [Account] = [],
         isSample: Bool = false,
-        fromHTML: Bool = false
+        fromHTML: Bool = false,
+        activity: ActivitySummary? = nil
     ) {
         self.id = id
         self.owner = owner
@@ -76,6 +80,7 @@ public struct Snapshot: Codable, Hashable, Identifiable, Sendable {
         self.recentlyUnfollowed = recentlyUnfollowed
         self.isSample = isSample
         self.fromHTML = fromHTML
+        self.activity = activity
     }
 
     /// Orders snapshots by export time, then import time for exports made the same moment.
@@ -96,5 +101,57 @@ public struct Snapshot: Codable, Hashable, Identifiable, Sendable {
     public func hasSameLists(as other: Snapshot) -> Bool {
         Set(followers.map(\.username)) == Set(other.followers.map(\.username))
             && Set(following.map(\.username)) == Set(other.following.map(\.username))
+    }
+}
+
+/// The activity logs an export can include, each recording whose content you
+/// interacted with and when.
+public enum ActivityKind: String, Codable, CaseIterable, Sendable {
+    case likedPost
+    case comment
+    case storyLike
+    case saved
+    case viewedPost
+    case viewedVideo
+}
+
+/// The latest thing you did with an account's content.
+public struct Activity: Codable, Hashable, Sendable {
+    public var kind: ActivityKind
+    public var date: Date
+
+    public init(kind: ActivityKind, date: Date) {
+        self.kind = kind
+        self.date = date
+    }
+}
+
+/// The span one activity log covers. Instagram keeps some logs, such as
+/// viewed posts, for a limited time, so "nothing on record" means less when
+/// the span is short.
+public struct ActivityCoverage: Codable, Hashable, Sendable {
+    public var kind: ActivityKind
+    public var first: Date
+    public var last: Date
+    public var count: Int
+
+    public init(kind: ActivityKind, first: Date, last: Date, count: Int) {
+        self.kind = kind
+        self.first = first
+        self.last = last
+        self.count = count
+    }
+}
+
+/// What an export says about your activity, reduced to one date per account.
+/// Individual likes and views are not kept.
+public struct ActivitySummary: Codable, Hashable, Sendable {
+    /// Latest activity per account you followed when the export was made.
+    public var lastSeen: [String: Activity]
+    public var coverage: [ActivityCoverage]
+
+    public init(lastSeen: [String: Activity], coverage: [ActivityCoverage]) {
+        self.lastSeen = lastSeen
+        self.coverage = coverage
     }
 }

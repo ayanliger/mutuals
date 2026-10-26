@@ -101,7 +101,13 @@ public enum ExportReader {
             (try? accounts(in: byKind[kind] ?? [], required: false)) ?? []
         }
 
-        let takenAt = exportDate(archiveDates: archiveDates, nameDate: nameDate, accounts: following + followers, importedAt: importedAt)
+        let activity = activitySummary(byKind, following: following)
+        let takenAt = exportDate(
+            archiveDates: archiveDates,
+            nameDate: nameDate,
+            latestRecord: ((following + followers).compactMap(\.since) + (activity?.coverage.map(\.last) ?? [])).max(),
+            importedAt: importedAt
+        )
         return Snapshot(
             owner: owner,
             takenAt: takenAt,
@@ -115,8 +121,41 @@ public enum ExportReader {
             sentRequests: Set(optional(.sentRequests).map(\.username)),
             receivedRequests: Set(optional(.receivedRequests).map(\.username)),
             recentlyUnfollowed: optional(.recentlyUnfollowed),
-            fromHTML: (byKind[.following] ?? []).contains(where: \.isHTML)
+            fromHTML: (byKind[.following] ?? []).contains(where: \.isHTML),
+            activity: activity
         )
+    }
+
+    /// Reduces the activity logs to the latest activity per followed account
+    /// and the span each log covers. Unreadable logs are skipped rather than
+    /// failing the import, since the follower lists are what matter most.
+    private static func activitySummary(_ byKind: [ExportFileKind: [Candidate]], following: [Account]) -> ActivitySummary? {
+        let followed = Set(following.map(\.username))
+        var lastSeen: [String: Activity] = [:]
+        var coverage: [ActivityCoverage] = []
+
+        for fileKind in ExportFileKind.allCases {
+            guard let kind = fileKind.activityKind, let files = byKind[fileKind] else { continue }
+            var first: Date?
+            var last: Date?
+            var count = 0
+            for file in files where !file.isHTML {
+                guard let data = try? file.load(), let parsed = try? ExportParser.parseActivity(data) else { continue }
+                for entry in parsed.entries {
+                    count += 1
+                    first = min(first ?? entry.date, entry.date)
+                    last = max(last ?? entry.date, entry.date)
+                    guard followed.contains(entry.username) else { continue }
+                    if lastSeen[entry.username].map({ $0.date < entry.date }) ?? true {
+                        lastSeen[entry.username] = Activity(kind: kind, date: entry.date)
+                    }
+                }
+            }
+            if let first, let last {
+                coverage.append(ActivityCoverage(kind: kind, first: first, last: last, count: count))
+            }
+        }
+        return coverage.isEmpty ? nil : ActivitySummary(lastSeen: lastSeen, coverage: coverage)
     }
 
     /// Picks which files to read for each kind. A file name can appear more
@@ -173,7 +212,7 @@ public enum ExportReader {
     /// Estimates when the export was generated. Entry timestamps inside the
     /// zip are the most precise source but carry no time zone, so they are
     /// trusted only when they agree with the date in the archive name.
-    private static func exportDate(archiveDates: [Date], nameDate: Date?, accounts: [Account], importedAt: Date) -> Date {
+    private static func exportDate(archiveDates: [Date], nameDate: Date?, latestRecord: Date?, importedAt: Date) -> Date {
         let plausible = archiveDates.filter { $0 > Date(timeIntervalSince1970: 1_420_070_400) }.max()
         var date: Date
         if let plausible, nameDate.map({ abs(plausible.timeIntervalSince($0)) < 3 * 86_400 }) ?? true {
@@ -181,8 +220,9 @@ public enum ExportReader {
         } else {
             date = nameDate ?? importedAt
         }
-        if let latest = accounts.compactMap(\.since).max(), latest > date {
-            date = latest
+        // Nothing in the export can be newer than the export itself.
+        if let latestRecord, latestRecord > date {
+            date = latestRecord
         }
         return min(date, importedAt)
     }

@@ -106,5 +106,7 @@ struct AnalyzerTests {
         #expect(report.pendingRequests.count == 3)
         #expect(report.changes?.lostFollowers.count == 7)
         #expect(report.changes?.newFollowers.count == 3)
+        let yearBefore = snapshots[1].takenAt.addingTimeInterval(-365 * 86_400)
+        #expect(report.quietAccounts(since: yearBefore, includeMutuals: false).count >= 20)
     }
 }

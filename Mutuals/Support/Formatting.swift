@@ -52,3 +52,56 @@ extension ReportItem {
         return shown.isEmpty ? nil : shown.map(\.label).joined(separator: " · ")
     }
 }
+
+extension ActivityKind {
+    /// "liked a post"
+    var action: String {
+        switch self {
+        case .likedPost: "liked a post"
+        case .comment: "commented"
+        case .storyLike: "liked a story"
+        case .saved: "saved a post"
+        case .viewedPost: "viewed a post"
+        case .viewedVideo: "watched a video"
+        }
+    }
+
+    /// "likes", as in "your likes since 2014"
+    var logName: String {
+        switch self {
+        case .likedPost: "likes"
+        case .comment: "comments"
+        case .storyLike: "story likes"
+        case .saved: "saves"
+        case .viewedPost: "viewed posts"
+        case .viewedVideo: "watched videos"
+        }
+    }
+}
+
+extension QuietItem {
+    var reason: String {
+        var parts = [lastSeen.map { "Last seen: \($0.kind.action), \($0.date.monthYear)" } ?? "Nothing on record"]
+        if followsYou { parts.append("Follows you") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// Settings for the Quiet list, shared by the overview and the list itself.
+enum QuietSettings {
+    static let monthsKey = "quietMonths"
+    static let mutualsKey = "quietIncludesMutuals"
+    static let choices = [6, 12, 24, 36]
+
+    /// "a year", "2 years", "6 months"
+    static func period(_ months: Int) -> String {
+        if months == 12 { return "a year" }
+        return months % 12 == 0 ? "\(months / 12) years" : "\(months) months"
+    }
+}
+
+/// "Based on your likes since May 2014, comments since Feb 2015 and viewed posts since Jul 2026."
+func coverageText(_ coverage: [ActivityCoverage]) -> String {
+    let parts = coverage.map { "\($0.kind.logName) since \($0.first.monthYear)" }
+    return "Based on your \(ListFormatter.localizedString(byJoining: parts))."
+}

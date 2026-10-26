@@ -21,17 +21,20 @@ Instagram doesn't say who unfollowed you, but its data export contains your foll
 
 The first export has no history to compare against, so the app looks for other signs that an account belongs to a person rather than a creator: your close friends list, follow requests, stories you hide from them, and when you followed them. If most of the accounts you followed in the same period follow you back, the ones that don't are likely people you know.
 
+The Quiet list is for cleaning up pages. When the export includes your activity, the app finds the accounts you follow that haven't shown up in it for a period you pick (six months to three years): no likes, comments, story likes or saves, and no posts or videos you viewed. Those are often pages that stopped posting. The export can't tell an account that stopped posting from one you scroll past, and Instagram keeps the viewed-posts log for a limited time, so the list says how far back each log goes. Only one date per account is kept, not the likes and views themselves.
+
 The app never unfollows anyone. Tapping an account opens its profile in Instagram, and when you come back the app asks whether you unfollowed. The next export confirms it.
 
 ## Getting the export
 
 1. In Instagram, go to Accounts Center > Your information and permissions > Export your information.
 2. Tap Create export, choose your Instagram account, then Export to device.
-3. Under Customize information, select only Followers and following.
-4. Set the date range to All time and the format to JSON.
-5. When Instagram notifies you, download the zip and import it in Mutuals, or share it to the app from Files.
+3. Under Customize information, select Followers and following.
+4. For the Quiet list, also select your likes, comments, saved posts, story interactions and ads information. None of them include photos.
+5. Set the date range to All time and the format to JSON.
+6. When Instagram notifies you, download the zip and import it in Mutuals, or share it to the app from Files.
 
-Importing a new export every week or two builds the history. Older exports can be imported too; the app sorts them by date. HTML exports are read as well, but they have no follow dates, so renames and follow periods can't be detected from them.
+Importing a new export every week or two builds the history. An export with activity made soon after one without can have identical lists; the app then adds the activity to the export it already has. Older exports can be imported too; the app sorts them by date. HTML exports are read as well, but they have no follow dates, so renames and follow periods can't be detected from them.
 
 ## Building
 
@@ -48,7 +51,7 @@ Export parsing and the comparisons live in the `MutualsCore` Swift package, whic
 swift test --package-path MutualsCore
 ```
 
-Debug builds accept launch arguments for working in the simulator: `-sample` loads demo data, `-import <path>` imports a file at launch, and `-route <screen>` opens a screen (`unfollowed`, `personal`, `rest`, `kept`, `requests`, `history`, `snapshot` or `about`).
+Debug builds accept launch arguments for working in the simulator: `-sample` loads demo data, `-import <path>` imports a file at launch, and `-route <screen>` opens a screen (`unfollowed`, `personal`, `rest`, `kept`, `requests`, `quiet`, `history`, `snapshot` or `about`).
 
 ## Limitations
 

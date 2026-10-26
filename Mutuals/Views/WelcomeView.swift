@@ -56,7 +56,8 @@ struct ExportSteps: View {
     private let steps: [String] = [
         "In Instagram, go to Accounts Center > Your information and permissions > Export your information.",
         "Tap Create export, pick your Instagram account, then Export to device.",
-        "Under Customize information, select only Followers and following.",
+        "Under Customize information, select Followers and following.",
+        "For the Quiet list, also select your likes, comments, saved posts, story interactions and ads information. None of them include photos.",
         "Set the date range to All time and the format to JSON, then start the export.",
         "When Instagram says it's ready, download the zip and import it here.",
     ]

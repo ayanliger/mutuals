@@ -129,6 +129,13 @@ final class AppStore {
         report?.items.filter { decision(for: $0.username)?.kind == kind } ?? []
     }
 
+    /// Accounts quiet for `months` before the latest export, leaving out the
+    /// ones already kept or marked as unfollowed.
+    func quietItems(months: Int, includeMutuals: Bool) -> [QuietItem] {
+        guard let report, let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: report.snapshot.takenAt) else { return [] }
+        return report.quietAccounts(since: cutoff, includeMutuals: includeMutuals).filter { decision(for: $0.username) == nil }
+    }
+
     /// Marks made before a newer export are settled by it: accounts that are
     /// gone from the following list are done, and accounts still there return
     /// to the lists. Keeps are permanent.
@@ -189,11 +196,21 @@ final class AppStore {
         }
         let owner = Self.ownerKey(snapshot)
 
-        if let existing = snapshots.first(where: {
+        if let index = snapshots.firstIndex(where: {
             Self.ownerKey($0) == owner && $0.hasSameLists(as: snapshot) && abs($0.takenAt.timeIntervalSince(snapshot.takenAt)) < 2 * 86_400
         }) {
             selectedOwner = owner
-            alert = AppAlert(title: "Already imported", message: "The export from \(existing.takenAt.mediumDay) has the same lists.")
+            // A second export made soon after the first, now with activity,
+            // often has identical lists. Keep its activity instead of
+            // rejecting it as a duplicate.
+            if let activity = snapshot.activity, snapshots[index].activity != activity {
+                snapshots[index].activity = activity
+                persist(snapshots[index])
+                refresh()
+                alert = AppAlert(title: "Activity added", message: "The export of \(snapshots[index].takenAt.mediumDay) now includes your activity, so the Quiet list is ready.")
+            } else {
+                alert = AppAlert(title: "Already imported", message: "The export from \(snapshots[index].takenAt.mediumDay) has the same lists.")
+            }
             return
         }
 
@@ -225,6 +242,10 @@ final class AppStore {
             lines.append("It's older than your latest export, so it was added to the history.")
         } else {
             lines.append("Import another export in a week or two to see who unfollows you.")
+        }
+        if let activity = snapshot.activity {
+            let logs = ListFormatter.localizedString(byJoining: activity.coverage.map(\.kind.logName))
+            lines.append("It includes your \(logs), so the Quiet list is ready.")
         }
         if snapshot.fromHTML {
             lines.append("This export is HTML, which has no follow dates. Choose JSON next time for better results.")

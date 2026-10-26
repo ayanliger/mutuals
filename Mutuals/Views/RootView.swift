@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 enum Route: Hashable {
     case list(ListSource)
     case requests
+    case quiet
     case history
     case snapshot(UUID)
     case about
@@ -25,6 +26,7 @@ struct RootView: View {
                     switch route {
                     case .list(let source): AccountListView(source: source)
                     case .requests: RequestsView()
+                    case .quiet: QuietListView()
                     case .history: HistoryView()
                     case .snapshot(let id): SnapshotDetailView(id: id)
                     case .about: AboutView()
@@ -89,7 +91,7 @@ struct RootView: View {
             guard path.isEmpty, let index = arguments.firstIndex(of: "-route"), index + 1 < arguments.count else { return }
             let routes: [String: Route] = [
                 "unfollowed": .list(.group(.unfollowedYou)), "personal": .list(.group(.likelyPersonal)),
-                "rest": .list(.group(.noSignal)), "kept": .list(.decided(.keep)), "requests": .requests,
+                "rest": .list(.group(.noSignal)), "kept": .list(.decided(.keep)), "requests": .requests, "quiet": .quiet,
                 "history": .history, "about": .about,
             ]
             if arguments[index + 1] == "snapshot", let id = store.currentSnapshots.last?.id {

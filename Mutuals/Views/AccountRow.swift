@@ -5,33 +5,54 @@ import UIKit
 struct AccountRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.openURL) private var openURL
-    let item: ReportItem
+    let username: String
+    let name: String?
+    let reason: String?
+    /// Unfollows are the one reason drawn in the accent color.
+    let highlightsReason: Bool
+    let followedAt: Date?
+
+    init(item: ReportItem) {
+        username = item.username
+        name = item.name
+        reason = item.reason
+        highlightsReason = item.group == .unfollowedYou
+        followedAt = item.followedAt
+    }
+
+    init(quiet: QuietItem) {
+        username = quiet.username
+        name = quiet.name
+        reason = quiet.reason
+        highlightsReason = false
+        followedAt = quiet.followedAt
+    }
 
     var body: some View {
-        let decision = store.decision(for: item.username)
+        let decision = store.decision(for: username)
         Button {
-            store.open(item.username, with: openURL, askOnReturn: decision == nil)
+            store.open(username, with: openURL, askOnReturn: decision == nil)
         } label: {
             // Concrete colors: inside a button, the hierarchical .primary and
             // .secondary styles resolve to the tint.
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: "@\(item.username)")
+                    Text(verbatim: "@\(username)")
                         .font(.body.weight(.medium))
                         .foregroundStyle(Color.primary)
-                    if let name = item.name, !name.isEmpty {
+                    if let name, !name.isEmpty {
                         Text(name)
                             .font(.subheadline)
                             .foregroundStyle(Color.secondary)
                     }
-                    if let reason = item.reason {
+                    if let reason {
                         Text(reason)
                             .font(.footnote)
-                            .foregroundStyle(item.group == .unfollowedYou ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(highlightsReason ? Color.accentColor : Color.secondary)
                     }
                 }
                 Spacer(minLength: 0)
-                if let followedAt = item.followedAt {
+                if let followedAt {
                     Text(followedAt.monthYear)
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Color.secondary)
@@ -44,31 +65,31 @@ struct AccountRow: View {
         .swipeActions(edge: .trailing) {
             if decision == nil {
                 // Swipe labels are always white, which needs the darker green in both modes.
-                Button("Unfollowed", systemImage: "checkmark") { store.setDecision(.unfollowed, for: item.username) }
+                Button("Unfollowed", systemImage: "checkmark") { store.setDecision(.unfollowed, for: username) }
                     .tint(Color("AccentDeep"))
             } else {
-                Button("Undo", systemImage: "arrow.uturn.backward") { store.setDecision(nil, for: item.username) }
+                Button("Undo", systemImage: "arrow.uturn.backward") { store.setDecision(nil, for: username) }
             }
         }
         .swipeActions(edge: .leading) {
             if decision == nil {
-                Button("Keep", systemImage: "pin") { store.setDecision(.keep, for: item.username) }
+                Button("Keep", systemImage: "pin") { store.setDecision(.keep, for: username) }
                     .tint(.gray)
             }
         }
         .contextMenu {
             Button("Open in Instagram", systemImage: "arrow.up.forward.app") {
-                store.open(item.username, with: openURL, askOnReturn: decision == nil)
+                store.open(username, with: openURL, askOnReturn: decision == nil)
             }
             Button("Copy Username", systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = item.username
+                UIPasteboard.general.string = username
             }
             Divider()
             if decision == nil {
-                Button("Keep Following", systemImage: "pin") { store.setDecision(.keep, for: item.username) }
-                Button("Mark as Unfollowed", systemImage: "checkmark.circle") { store.setDecision(.unfollowed, for: item.username) }
+                Button("Keep Following", systemImage: "pin") { store.setDecision(.keep, for: username) }
+                Button("Mark as Unfollowed", systemImage: "checkmark.circle") { store.setDecision(.unfollowed, for: username) }
             } else {
-                Button("Move Back to Lists", systemImage: "arrow.uturn.backward") { store.setDecision(nil, for: item.username) }
+                Button("Move Back to Lists", systemImage: "arrow.uturn.backward") { store.setDecision(nil, for: username) }
             }
         }
     }

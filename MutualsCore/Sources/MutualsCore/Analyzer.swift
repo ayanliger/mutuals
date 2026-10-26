@@ -58,6 +58,29 @@ public struct ReportItem: Identifiable, Hashable, Sendable {
     }
 }
 
+/// An account you follow and the last time its content showed up in your activity.
+public struct QuietItem: Identifiable, Hashable, Sendable {
+    public var id: String { username }
+    public let username: String
+    public let name: String?
+    public let followedAt: Date?
+    public let lastSeen: Activity?
+    public let followsYou: Bool
+
+    /// When the account went quiet: its last activity or the follow date,
+    /// whichever is later. A like from before you followed doesn't make an
+    /// account quieter than the follow itself.
+    public var quietSince: Date? { [lastSeen?.date, followedAt].compactMap { $0 }.max() }
+}
+
+/// Your activity merged across all exports of one account.
+public struct ActivityOverview: Sendable {
+    /// Latest activity per account, across every export that had activity logs.
+    public let lastSeen: [String: Activity]
+    /// One span per log, from the earliest to the latest entry in any export.
+    public let coverage: [ActivityCoverage]
+}
+
 /// Who started and stopped following between two exports.
 public struct SnapshotDiff: Sendable {
     public struct Rename: Hashable, Sendable {
@@ -83,12 +106,32 @@ public struct Report: Sendable {
     public let pendingRequests: [Account]
     /// Changes since the previous export, when there is one.
     public let changes: SnapshotDiff?
+    /// Nil until an export with activity logs has been imported.
+    public let activity: ActivityOverview?
 
     public var followingCount: Int { snapshot.following.count }
     public var followersCount: Int { snapshot.followers.count }
 
     public func items(in group: ReportItem.Group) -> [ReportItem] {
         items.filter { $0.group == group }
+    }
+
+    /// Accounts you follow with no activity of yours since `cutoff`, the
+    /// longest quiet first. Accounts followed after the cutoff haven't had
+    /// the time to go quiet and are left out.
+    public func quietAccounts(since cutoff: Date, includeMutuals: Bool) -> [QuietItem] {
+        guard let activity else { return [] }
+        let followers = Set(snapshot.followers.map(\.username))
+        return snapshot.following
+            .compactMap { account -> QuietItem? in
+                let followsYou = followers.contains(account.username)
+                guard includeMutuals || !followsYou else { return nil }
+                if let followed = account.since, followed >= cutoff { return nil }
+                let seen = activity.lastSeen[account.username]
+                if let seen, seen.date >= cutoff { return nil }
+                return QuietItem(username: account.username, name: account.name, followedAt: account.since, lastSeen: seen, followsYou: followsYou)
+            }
+            .sorted { ($0.quietSince ?? .distantPast, $0.username) < ($1.quietSince ?? .distantPast, $1.username) }
     }
 }
 
@@ -151,8 +194,34 @@ public enum Analyzer {
             mutualCount: mutualCount,
             items: items.sorted(by: reportOrder),
             pendingRequests: latest.pendingRequests.sorted { ($0.since ?? .distantFuture) < ($1.since ?? .distantFuture) },
-            changes: previous.map { diff(from: $0, to: latest) }
+            changes: previous.map { diff(from: $0, to: latest) },
+            activity: mergedActivity(ordered)
         )
+    }
+
+    /// Combines the activity of every export. Older exports still count: a
+    /// like recorded in March stays the latest sign of an account even if a
+    /// later export's viewed-posts log no longer reaches back that far.
+    static func mergedActivity(_ snapshots: [Snapshot]) -> ActivityOverview? {
+        var lastSeen: [String: Activity] = [:]
+        var coverage: [ActivityKind: ActivityCoverage] = [:]
+        for summary in snapshots.compactMap(\.activity) {
+            for (username, activity) in summary.lastSeen where lastSeen[username].map({ $0.date < activity.date }) ?? true {
+                lastSeen[username] = activity
+            }
+            for span in summary.coverage {
+                guard var merged = coverage[span.kind] else {
+                    coverage[span.kind] = span
+                    continue
+                }
+                merged.first = min(merged.first, span.first)
+                merged.last = max(merged.last, span.last)
+                merged.count = max(merged.count, span.count)
+                coverage[span.kind] = merged
+            }
+        }
+        guard !coverage.isEmpty else { return nil }
+        return ActivityOverview(lastSeen: lastSeen, coverage: ActivityKind.allCases.compactMap { coverage[$0] })
     }
 
     /// Unfollows are listed newest first, personal accounts by strength of

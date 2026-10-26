@@ -10,6 +10,7 @@ struct AboutView: View {
             Section("How it works") {
                 Text("Instagram doesn't tell you who unfollowed you. Each export is a snapshot of your lists, and Mutuals compares every new export with the earlier ones. Anyone who followed you before and doesn't now, while you still follow them, shows up under Unfollowed you.")
                 Text("Before there are two exports to compare, Mutuals looks for signs that an account is a person: your close friends list, follow requests, stories you hide, and when you followed them. If most of the accounts you followed around the same time follow you back, you were probably following friends then.")
+                Text("The Quiet list uses the activity in the export: likes, comments, story likes, saves, and the posts and videos you viewed. Accounts that haven't appeared in any of them since the cut-off are listed. The export can't tell an account that stopped posting from one you scroll past.")
             }
 
             Section("Privacy") {

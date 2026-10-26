@@ -81,7 +81,30 @@ public enum SampleData {
 
         let takenB = now.addingTimeInterval(-86_400)
         let takenA = takenB.addingTimeInterval(-35 * 86_400)
-        func snapshot(taken: Date, followers: [Account], following: [Account]) -> Snapshot {
+        // Activity in the second export: most accounts seen in the last three
+        // months, some last liked or saved years ago, a few never seen.
+        let viewedFrom = takenB.addingTimeInterval(-90 * 86_400)
+        var lastSeen: [String: Activity] = [:]
+        for account in followingB {
+            let roll = Double.random(in: 0..<1, using: &random)
+            if roll < 0.6 {
+                let seconds = Double.random(in: viewedFrom.timeIntervalSince1970..<takenB.timeIntervalSince1970, using: &random)
+                lastSeen[account.username] = Activity(kind: .viewedPost, date: Date(timeIntervalSince1970: seconds))
+            } else if roll < 0.86 {
+                let kind = [ActivityKind.likedPost, .storyLike, .saved, .comment].randomElement(using: &random)!
+                lastSeen[account.username] = Activity(kind: kind, date: moment((2018, 1), (2025, 6)))
+            }
+        }
+        let activity = ActivitySummary(lastSeen: lastSeen, coverage: [
+            ActivityCoverage(kind: .likedPost, first: utc(2014, 5), last: takenB, count: 3_412),
+            ActivityCoverage(kind: .comment, first: utc(2015, 2), last: takenB, count: 241),
+            ActivityCoverage(kind: .storyLike, first: utc(2019, 8), last: takenB, count: 1_870),
+            ActivityCoverage(kind: .saved, first: utc(2016, 3), last: takenB, count: 388),
+            ActivityCoverage(kind: .viewedPost, first: viewedFrom, last: takenB, count: 9_150),
+            ActivityCoverage(kind: .viewedVideo, first: viewedFrom, last: takenB, count: 4_020),
+        ])
+
+        func snapshot(taken: Date, followers: [Account], following: [Account], activity: ActivitySummary?) -> Snapshot {
             Snapshot(
                 owner: "sample",
                 takenAt: taken,
@@ -94,12 +117,13 @@ public enum SampleData {
                 pendingRequests: pending,
                 sentRequests: Set(requested.map(\.0)),
                 receivedRequests: [asking.0],
-                isSample: true
+                isSample: true,
+                activity: activity
             )
         }
         return [
-            snapshot(taken: takenA, followers: followersA, following: followingA),
-            snapshot(taken: takenB, followers: followersB, following: followingB),
+            snapshot(taken: takenA, followers: followersA, following: followingA, activity: nil),
+            snapshot(taken: takenB, followers: followersB, following: followingB, activity: activity),
         ]
     }
 

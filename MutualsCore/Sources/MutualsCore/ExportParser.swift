@@ -10,6 +10,25 @@ public enum ExportFileKind: String, CaseIterable, Sendable {
     case sentRequests
     case receivedRequests
     case recentlyUnfollowed
+    case likedPosts
+    case comments
+    case storyLikes
+    case savedPosts
+    case viewedPosts
+    case viewedVideos
+
+    /// The activity log a file holds, for the files that are activity logs.
+    public var activityKind: ActivityKind? {
+        switch self {
+        case .likedPosts: .likedPost
+        case .comments: .comment
+        case .storyLikes: .storyLike
+        case .savedPosts: .saved
+        case .viewedPosts: .viewedPost
+        case .viewedVideos: .viewedVideo
+        default: nil
+        }
+    }
 
     /// Classifies a path inside an export by its file name. Returns nil for
     /// everything the app does not read.
@@ -36,6 +55,12 @@ public enum ExportFileKind: String, CaseIterable, Sendable {
         case "recent_follow_requests", "permanent_follow_requests": kind = .sentRequests
         case "recently_unfollowed_profiles", "recently_unfollowed_accounts", "recently_unfollowed", "unfollowed_profiles":
             kind = .recentlyUnfollowed
+        case "liked_posts": kind = .likedPosts
+        case "story_likes": kind = .storyLikes
+        case "saved_posts": kind = .savedPosts
+        case "posts_viewed": kind = .viewedPosts
+        case "videos_watched": kind = .viewedVideos
+        case _ where base.hasPrefix("post_comments") || base.hasPrefix("reels_comments"): kind = .comments
         default:
             if base == "followers" || (base.hasPrefix("followers_") && base.count > 10 && base.dropFirst(10).allSatisfy(\.isNumber)) {
                 kind = .followers
@@ -108,6 +133,124 @@ public enum ExportParser {
             searchStart = end
         }
         return ParsedFile(accounts: accounts, recordCount: links)
+    }
+
+    // MARK: - Activity
+
+    /// One entry of an activity log: whose content it was and when.
+    public struct ActivityEntry: Hashable, Sendable {
+        public var username: String
+        public var date: Date
+    }
+
+    /// Owner keys of the older formats, and the English label of the 2026 one.
+    private static let knownOwnerKeys: Set<String> = ["author", "media owner", "owner", "username"]
+
+    /// Reads an activity log (likes, comments, story likes, saves, viewed posts
+    /// or videos) into the owner of each piece of content and the time.
+    ///
+    /// Older exports name the owner in `title` or under a key such as
+    /// "Author" or "Media Owner". The 2026 format nests it two levels down,
+    /// in an "Owner" group of label/value pairs with translated labels. Every
+    /// string in a record is collected with its key, and the owner key is
+    /// picked per file by the same value-shape inference used for the
+    /// follower lists.
+    public static func parseActivity(_ data: Data) throws -> (entries: [ActivityEntry], recordCount: Int) {
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            throw ExportReadError.notJSON
+        }
+        var records: [[String: Any]] = []
+        collectActivityRecords(in: object, into: &records)
+        let candidates = records.map(candidatePairs)
+
+        var tallies: [String: Tally] = [:]
+        for pairs in candidates {
+            for (key, value) in pairs where !key.hasPrefix("#href") {
+                tally(value, into: &tallies[key, default: Tally()])
+            }
+        }
+        // Older logs keep the owner in `title`; the value beside it is usually
+        // an emoji but can be any short word, so `title` is taken first.
+        let titleKey = tallies["#title"].flatMap { Double($0.usernameLike) >= 0.9 * Double($0.filled) ? "#title" : nil }
+        let ownerKey = tallies.keys.sorted().first {
+            let label = repairMojibake($0).lowercased()
+            return knownOwnerKeys.contains(label) || knownUsernameLabels.contains(label)
+        } ?? titleKey ?? inferUsernameLabel(tallies)
+
+        var entries: [ActivityEntry] = []
+        for (record, pairs) in zip(records, candidates) {
+            guard let date = latestTimestamp(in: record) else { continue }
+            let owner = ownerKey.flatMap { key in pairs.first { $0.key == key }.flatMap { usernameValue($0.value) } }
+                ?? pairs.lazy.compactMap { usernameFromURL($0.value) }.first
+            if let owner {
+                entries.append(ActivityEntry(username: owner, date: date))
+            }
+        }
+        return (entries, records.count)
+    }
+
+    private static func collectActivityRecords(in object: Any, into records: inout [[String: Any]]) {
+        if let dictionary = object as? [String: Any] {
+            if dictionary["string_list_data"] is [Any] || dictionary["string_map_data"] is [String: Any] || dictionary["label_values"] is [Any] {
+                records.append(dictionary)
+                return
+            }
+            for key in dictionary.keys.sorted() {
+                collectActivityRecords(in: dictionary[key]!, into: &records)
+            }
+        } else if let array = object as? [Any] {
+            for element in array {
+                collectActivityRecords(in: element, into: &records)
+            }
+        }
+    }
+
+    /// Every string in a record with the key it sits under. Links are kept
+    /// under "#href" keys, as a fallback source of profile usernames only.
+    private static func candidatePairs(_ record: [String: Any]) -> [(key: String, value: String)] {
+        var pairs: [(key: String, value: String)] = []
+        if let title = record["title"] as? String, !title.isEmpty {
+            pairs.append(("#title", title))
+        }
+        for item in record["string_list_data"] as? [[String: Any]] ?? [] {
+            if let value = item["value"] as? String { pairs.append(("#value", value)) }
+            if let href = item["href"] as? String { pairs.append(("#href", href)) }
+        }
+        for (key, item) in (record["string_map_data"] as? [String: Any] ?? [:]).sorted(by: { $0.key < $1.key }) {
+            guard let item = item as? [String: Any] else { continue }
+            if let value = item["value"] as? String { pairs.append((key, value)) }
+            if let href = item["href"] as? String { pairs.append(("#href", href)) }
+        }
+        flattenLabels(record["label_values"] as? [[String: Any]] ?? [], into: &pairs)
+        return pairs
+    }
+
+    private static func flattenLabels(_ entries: [[String: Any]], into pairs: inout [(key: String, value: String)]) {
+        for entry in entries {
+            if let label = entry["label"] as? String, let value = entry["value"] as? String {
+                pairs.append((label, value))
+            }
+            if let href = entry["href"] as? String {
+                pairs.append(("#href", href))
+            }
+            if let nested = entry["dict"] as? [[String: Any]] {
+                flattenLabels(nested, into: &pairs)
+            }
+        }
+    }
+
+    private static func latestTimestamp(in record: [String: Any]) -> Date? {
+        var dates = [date(from: record["timestamp"])]
+        for item in record["string_list_data"] as? [[String: Any]] ?? [] {
+            dates.append(date(from: item["timestamp"]))
+        }
+        for item in (record["string_map_data"] as? [String: Any] ?? [:]).values {
+            dates.append(date(from: (item as? [String: Any])?["timestamp"]))
+        }
+        return dates.compactMap { $0 }.max()
     }
 
     // MARK: - Records
@@ -185,19 +328,7 @@ public enum ExportParser {
             guard let pairs = record["label_values"] as? [[String: Any]] else { continue }
             for pair in pairs {
                 guard let label = pair["label"] as? String else { continue }
-                var tally = tallies[label, default: Tally()]
-                if let value = (pair["value"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
-                    tally.filled += 1
-                    if value.contains("://") {
-                        // URLs are neither usernames nor display names.
-                    } else if usernameValue(value) != nil {
-                        tally.usernameLike += 1
-                    } else if value.contains(where: \.isLetter), value.filter(\.isNumber).count * 10 < value.count * 3 {
-                        // Letters and few digits: a display name rather than a date or a count.
-                        tally.nameLike += 1
-                    }
-                }
-                tallies[label] = tally
+                tally(pair["value"] as? String, into: &tallies[label, default: Tally()])
             }
         }
         guard !tallies.isEmpty else { return Labels() }
@@ -209,6 +340,19 @@ public enum ExportParser {
             .max { ($0.value.nameLike, $1.key) < ($1.value.nameLike, $0.key) }?
             .key
         return Labels(username: username, name: name)
+    }
+
+    private static func tally(_ raw: String?, into tally: inout Tally) {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return }
+        tally.filled += 1
+        if value.contains("://") {
+            // URLs are neither usernames nor display names.
+        } else if usernameValue(value) != nil {
+            tally.usernameLike += 1
+        } else if value.contains(where: \.isLetter), value.filter(\.isNumber).count * 10 < value.count * 3 {
+            // Letters and few digits: a display name rather than a date or a count.
+            tally.nameLike += 1
+        }
     }
 
     /// Picks the label whose values are almost all valid usernames. Display
