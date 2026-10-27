@@ -1,6 +1,5 @@
 # Mutuals
 
-[![Tests](https://github.com/ayanliger/mutuals/actions/workflows/tests.yml/badge.svg)](https://github.com/ayanliger/mutuals/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![iOS 18+](https://img.shields.io/badge/iOS-18%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/ios/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)](https://www.swift.org)
@@ -45,7 +44,7 @@ You need Xcode 26 or later. The app runs on iOS 18 and later.
 
 With a free Apple developer account the installed app expires after 7 days. Running it from Xcode again renews it and keeps your data.
 
-Export parsing and the comparisons live in the `MutualsCore` Swift package, which has its own tests. CI runs them on every push:
+Export parsing and the comparisons live in the `MutualsCore` Swift package, which has its own tests:
 
 ```sh
 swift test --package-path MutualsCore
